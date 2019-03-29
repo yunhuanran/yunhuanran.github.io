@@ -1,0 +1,374 @@
+
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+  <title>OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构) | 潮鸣</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="目前关于cinder的源码解读的中文资料大部分都属于早期OpenStack版本，本文将对较新的Mitaka版本的Cinder除了客户端以外的源码进行解析，主要包括以下内容：  代码的体系结构 具体源码的注释解读 笔记">
+<meta name="keywords" content="Openstack,cinder">
+<meta property="og:type" content="article">
+<meta property="og:title" content="OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)">
+<meta property="og:url" content="http://yoursite.com/2016/12/07/OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)/index.html">
+<meta property="og:site_name" content="潮鸣">
+<meta property="og:description" content="目前关于cinder的源码解读的中文资料大部分都属于早期OpenStack版本，本文将对较新的Mitaka版本的Cinder除了客户端以外的源码进行解析，主要包括以下内容：  代码的体系结构 具体源码的注释解读 笔记">
+<meta property="og:locale" content="zh-CN">
+<meta property="og:updated_time" content="2019-03-26T02:44:08.820Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)">
+<meta name="twitter:description" content="目前关于cinder的源码解读的中文资料大部分都属于早期OpenStack版本，本文将对较新的Mitaka版本的Cinder除了客户端以外的源码进行解析，主要包括以下内容：  代码的体系结构 具体源码的注释解读 笔记">
+  
+    <link rel="alternative" href="/atom.xml" title="潮鸣" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  <link rel="stylesheet" href="/css/style.css">
+  <!--[if lt IE 9]><script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7/html5shiv.min.js"></script><![endif]-->
+  
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "//hm.baidu.com/hm.js?aeb07ba20a02c2bef2a50f47b88b63b6";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+</head></html>
+<body>
+<div id="container">
+  <div id="wrap">
+    <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">潮鸣</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Why the worry, I&#39;d rather wonder.</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="http://www.baidu.com/baidu" method="get" accept-charset="utf-8" class="search-form">
+          <input type="search" name="word" maxlength="20" class="search-form-input" placeholder="Search">
+          <input type="submit" value class="search-form-submit">
+          <input name="tn" type="hidden" value="bds">
+          <input name="cl" type="hidden" value="3">
+          <input name="ct" type="hidden" value="2097152">
+          <input type="hidden" name="si" value="yoursite.com">
+        </form>
+      </div>
+    </div>
+  </div>
+</header>
+    <div class="outer">
+      <section id="main"><article id="post-OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)" class="article article-type-post" itemscope itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2016/12/07/OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)/" class="article-date">
+  <time datetime="2016-12-07T01:31:17.000Z" itemprop="datePublished">2016-12-07</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>目前关于cinder的源码解读的中文资料大部分都属于早期OpenStack版本，本文将对较新的Mitaka版本的Cinder除了客户端以外的源码进行解析，主要包括以下内容：</p>
+<ul>
+<li>代码的体系结构</li>
+<li>具体源码的注释解读</li>
+<li>笔记</li>
+</ul>
+<a id="more"></a>
+<h2 id="cinder-源码目录结构"><a href="#cinder-源码目录结构" class="headerlink" title="cinder 源码目录结构"></a>cinder 源码目录结构</h2><h3 id="cinder-api"><a href="#cinder-api" class="headerlink" title="cinder/api"></a>cinder/api</h3><p>cinder的核心代码之一，对应cinder-api模块，是进入cinder的HTTP接口。</p>
+<h3 id="cinder-backup"><a href="#cinder-backup" class="headerlink" title="cinder/backup"></a>cinder/backup</h3><p>cinder的核心代码之一，对应cinder-backup模块，用于提供存储卷的备份功能，支持将块存储被分到Openstak对象存储，比如Swift，Ceph等。</p>
+<ul>
+<li>cinder/backup/drivers<br>针对不同的存储后端的驱动</li>
+</ul>
+<h3 id="cinder-brick"><a href="#cinder-brick" class="headerlink" title="cinder/brick"></a>cinder/brick</h3><p>用于管理本地卷的挂载，目前该部分已经逐渐从cinder中迁移出去，成为独立的项目，项目中遗留的是尚未迁移的部分。<br><a href="https://github.com/openstack/os-brick" target="_blank" rel="noopener">https://github.com/openstack/os-brick</a></p>
+<h3 id="cinder-cmd"><a href="#cinder-cmd" class="headerlink" title="cinder/cmd"></a>cinder/cmd</h3><p>cinder管理的命令行接口，比如cinder各个模块的启动。</p>
+<h3 id="cinder-common"><a href="#cinder-common" class="headerlink" title="cinder/common"></a>cinder/common</h3><p>公共代码，包括配置参数信息，数据库工具等。</p>
+<h3 id="cinder-compute"><a href="#cinder-compute" class="headerlink" title="cinder/compute"></a>cinder/compute</h3><p>导入Compute API，默认为cinder.compute.nova.API,定义了一些通过Nova客户端实现快照处理等操作的方法。</p>
+<h3 id="cinder-config"><a href="#cinder-config" class="headerlink" title="cinder/config"></a>cinder/config</h3><p>该文件夹存放模块的配置文件。</p>
+<h3 id="cinder-consistencygroup"><a href="#cinder-consistencygroup" class="headerlink" title="cinder/consistencygroup"></a>cinder/consistencygroup</h3><p>处理一致性组相关的所有请求。（一致性组属于相对较新的功能）</p>
+<h3 id="cinder-db"><a href="#cinder-db" class="headerlink" title="cinder/db"></a>cinder/db</h3><p>cinder的数据库的接口，相关数据表的定义与描述。 </p>
+<h3 id="cinder-hacking"><a href="#cinder-hacking" class="headerlink" title="cinder/hacking"></a>cinder/hacking</h3><p>用于cinder的特定测试。</p>
+<h3 id="cinder-image"><a href="#cinder-image" class="headerlink" title="cinder/image"></a>cinder/image</h3><p>实现使用Glance作为后端的镜像服务，有些操作通过Glance客户端调用Glance中的相应方法实现。 </p>
+<h3 id="cinder-keymgr"><a href="#cinder-keymgr" class="headerlink" title="cinder/keymgr"></a>cinder/keymgr</h3><p>秘钥管理。</p>
+<h3 id="cinder-locale"><a href="#cinder-locale" class="headerlink" title="cinder/locale"></a>cinder/locale</h3><p>地区化（语言设置）相关的内容。</p>
+<h3 id="cinder-objects"><a href="#cinder-objects" class="headerlink" title="cinder/objects"></a>cinder/objects</h3><p>属于较新的组件，将对象引入cinder，组件内部工具api，将各种资源抽象成为对象，对象可以将数据与操作他们的方法捆绑在一起。<br>通过使用对象，代码将于实际的数据库有一定的隔离，可以使滚动升级更加容易。对象可以用于RPC传递数据，并允许直接从数据库通过RPC延迟加载数据。</p>
+<h3 id="cinder-replication"><a href="#cinder-replication" class="headerlink" title="cinder/replication"></a>cinder/replication</h3><p>管理卷的副本。卷的副本可用于HA与容灾恢复。</p>
+<h3 id="cinder-scheduler"><a href="#cinder-scheduler" class="headerlink" title="cinder/scheduler"></a>cinder/scheduler</h3><p>cinder的核心代码之一，会根据预定的策略（不同的调度算法），选择合适的cinder-volume节点来处理用户的请求。在用户请求没有指定具体的存储节点时，cinder-scheduler会选择一个合适的节点。如果用户的请求已经指定了具体的存储节点，则直接cinder-scheduler不参与调度，直接交由cinder-volume处理。</p>
+<h3 id="cinder-testing"><a href="#cinder-testing" class="headerlink" title="cinder/testing"></a>cinder/testing</h3><p>在项目安装完成之后，里面只有一个关于的简单说明，如果是未安装状态的代码则里面包括了cinder的各种单元测试。</p>
+<h3 id="cinder-transfer"><a href="#cinder-transfer" class="headerlink" title="cinder/transfer"></a>cinder/transfer</h3><p>处理卷所有权转换相关的请求，比如卷从一个租户转换到另外一个租户。</p>
+<h3 id="cinder-volume"><a href="#cinder-volume" class="headerlink" title="cinder/volume"></a>cinder/volume</h3><p>cinder核心代码之一，运行在存储节点上管理具体存储设备的存储空间，每个存储节点上都会运行一个cinder-volume服务，多个这样的节点一起便构成了一个存储资源池。</p>
+<ul>
+<li>/cinder/volume/drivers/<br>针对不同存储后端的驱动</li>
+</ul>
+<h3 id="cinder-wsgi"><a href="#cinder-wsgi" class="headerlink" title="cinder/wsgi"></a>cinder/wsgi</h3><p>wsgi服务相关的代码。</p>
+<h3 id="cinder-zonemanager"><a href="#cinder-zonemanager" class="headerlink" title="cinder/zonemanager"></a>cinder/zonemanager</h3><p>扩展了Cinder对FC的支持。</p>
+<h3 id="cinder"><a href="#cinder" class="headerlink" title="cinder"></a>cinder</h3><p>项目根目录下主要包括一些工具类，包括通用工具，版本相关，锁，rpc，ssh工具……等内容。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      
+        <a data-url="http://yoursite.com/2016/12/07/OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)/" data-id="cjtpfct4z000481jrx69cextx" class="article-share-link" data-share="baidu">分享到</a>
+      
+
+      
+        <a href="http://yoursite.com/2016/12/07/OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)/#ds-thread" class="article-comment-link">评论</a>
+      
+
+      
+  <ul class="article-tag-list"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Openstack/">Openstack</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/cinder/">cinder</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2016/12/29/Ceph快照详解——使用，原理与实现/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">下一篇</strong>
+      <div class="article-nav-title">
+        
+          Ceph快照详解——使用，原理与实现
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2016/11/29/软件定义存储与分布式存储产品调研/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">上一篇</strong>
+      <div class="article-nav-title">软件定义存储与分布式存储产品调研</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+  <section id="comments">
+    <div id="ds-thread" class="ds-thread" data-thread-key="2016/12/07/OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)/" data-title="OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)" data-url="http://yoursite.com/2016/12/07/OpenStack Cinder 源码解读（基于Mitaka）(一)(源码体系结构)/"></div>
+  </section>
+</section>
+      
+      <aside id="sidebar">
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">标签</h3>
+    <div class="widget">
+      <ul class="tag-list"><li class="tag-list-item"><a class="tag-list-link" href="/tags/Ceph/">Ceph</a><span class="tag-list-count">6</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/GlusterFS/">GlusterFS</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Linux/">Linux</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Openstack/">Openstack</a><span class="tag-list-count">4</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/SDS/">SDS</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/cinder/">cinder</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/iscsi/">iscsi</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/kvm/">kvm</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/linux/">linux</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/neutron/">neutron</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/python/">python</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/qemu/">qemu</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/qemu-kvm/">qemu-kvm</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/分布式存储/">分布式存储</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/性能/">性能</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/灾备/">灾备</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/网络虚拟化/">网络虚拟化</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/运维/">运维</a><span class="tag-list-count">1</span></li></ul>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">标签云</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/Ceph/" style="font-size: 20px;">Ceph</a> <a href="/tags/GlusterFS/" style="font-size: 10px;">GlusterFS</a> <a href="/tags/Linux/" style="font-size: 10px;">Linux</a> <a href="/tags/Openstack/" style="font-size: 15px;">Openstack</a> <a href="/tags/SDS/" style="font-size: 10px;">SDS</a> <a href="/tags/cinder/" style="font-size: 10px;">cinder</a> <a href="/tags/iscsi/" style="font-size: 10px;">iscsi</a> <a href="/tags/kvm/" style="font-size: 10px;">kvm</a> <a href="/tags/linux/" style="font-size: 10px;">linux</a> <a href="/tags/neutron/" style="font-size: 10px;">neutron</a> <a href="/tags/python/" style="font-size: 10px;">python</a> <a href="/tags/qemu/" style="font-size: 10px;">qemu</a> <a href="/tags/qemu-kvm/" style="font-size: 10px;">qemu-kvm</a> <a href="/tags/分布式存储/" style="font-size: 10px;">分布式存储</a> <a href="/tags/性能/" style="font-size: 10px;">性能</a> <a href="/tags/灾备/" style="font-size: 10px;">灾备</a> <a href="/tags/网络虚拟化/" style="font-size: 10px;">网络虚拟化</a> <a href="/tags/运维/" style="font-size: 10px;">运维</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">归档</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2017/05/">五月 2017</a><span class="archive-list-count">2</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2017/02/">二月 2017</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2016/12/">十二月 2016</a><span class="archive-list-count">2</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2016/11/">十一月 2016</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2016/10/">十月 2016</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/11/">十一月 2015</a><span class="archive-list-count">3</span></li></ul>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">近期文章</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/03/29/Linux系统调用查询与跟踪/">Linux系统调用查询与跟踪</a>
+          </li>
+        
+          <li>
+            <a href="/2017/05/09/Openstack Neutron概述/">Openstack Neutron概述</a>
+          </li>
+        
+          <li>
+            <a href="/2017/05/01/Ceph更换网络状况处理方法/">Ceph更换网络状况处理方法</a>
+          </li>
+        
+          <li>
+            <a href="/2017/02/21/使用Distutils（setup.py）打包Python项目为rpm包简介/">使用Distutils（setup.py）打包Python项目为rpm包简介</a>
+          </li>
+        
+          <li>
+            <a href="/2016/12/29/Ceph快照详解——使用，原理与实现/">Ceph快照详解——使用，原理与实现</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">友情链接</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="http://aidaiz.com/" target="_blank">Yunyao Zhang</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+      
+    </div>
+    <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 Yun<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+      .
+      Theme by <a href="https://github.com/xiangming/landscape-plus" target="_blank">Landscape-plus</a>
+    </div>
+  </div>
+</footer>
+  </div>
+  <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+  <!-- totop start -->
+<div id="totop">
+<a title="返回顶部"><img src="/img/scrollup.png"></a>
+</div>
+
+<!-- totop end -->
+
+<!-- 多说公共js代码 start -->
+<script type="text/javascript">
+var duoshuoQuery = {short_name:"yunhuanran"};
+  (function() {
+    var ds = document.createElement('script');
+    ds.type = 'text/javascript';ds.async = true;
+    ds.src = (document.location.protocol == 'https:' ? 'https:' : 'http:') + '//static.duoshuo.com/embed.js';
+    ds.charset = 'UTF-8';
+    (document.getElementsByTagName('head')[0]
+     || document.getElementsByTagName('body')[0]).appendChild(ds);
+  })();
+  </script>
+<!-- 多说公共js代码 end -->
+
+
+<!-- 百度分享 start -->
+
+<div id="article-share-box" class="article-share-box">
+  <div id="bdshare" class="bdsharebuttonbox article-share-links">
+    <a class="article-share-weibo" data-cmd="tsina" title="分享到新浪微博"></a>
+    <a class="article-share-weixin" data-cmd="weixin" title="分享到微信"></a>
+    <a class="article-share-qq" data-cmd="sqq" title="分享到QQ"></a>
+    <a class="article-share-renren" data-cmd="renren" title="分享到人人网"></a>
+    <a class="article-share-more" data-cmd="more" title="更多"></a>
+  </div>
+</div>
+<script>window._bd_share_config={"common":{},"share":{"bdCustomStyle":"/css/bdshare.css"}};with(document)0[(getElementsByTagName('head')[0]||body).appendChild(createElement('script')).src='http://bdimg.share.baidu.com/static/api/js/share.js?cdnversion='+~(-new Date()/36e5)];</script>
+
+<!-- 百度分享 end -->
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+
+
+
+
+<! -- mathjax config similar to math.stackexchange -->
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+                processEscapes: true
+                    
+}
+  
+        });
+</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+tex2jax: {
+            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+                  
+}
+    
+        });
+</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Queue(function() {
+            var all = MathJax.Hub.getAllJax(), i;
+            for(i=0; i < all.length; i += 1) {
+                            all[i].SourceElement().parentNode.className += ' has-jax';
+                                    
+            }
+                
+        });
+</script>
+
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+</script>
+
+
+<script src="/js/script.js"></script>
+
+</div>
+</body>
+</html>

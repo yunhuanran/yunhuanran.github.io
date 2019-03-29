@@ -1,0 +1,409 @@
+
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+  <title>OpenStack虚拟机增量快照（基于qemu外置快照） | 潮鸣</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="##实践内容寻找对通过OpenStack建立的虚拟机进行增量快照，并且使得这些快照可以备份在远程的方法。 ##技术方案通过研究了解到Nova自带的快照功能并不支持增量快照，每次快照会将修改的内容与基础镜像合并然后上传到存储后端，然后决定选择特定的hypervisor进行该功能的实现，本文选取qemu作为后端hypervisor。 通过研究发现Centos 7默认的qemu-kvm版本（1.5.3）">
+<meta name="keywords" content="Openstack,qemu,kvm,qemu-kvm,灾备">
+<meta property="og:type" content="article">
+<meta property="og:title" content="OpenStack虚拟机增量快照（基于qemu外置快照）">
+<meta property="og:url" content="http://yoursite.com/2015/11/25/OpenStack虚拟机增量快照（基于qemu外置快照）/index.html">
+<meta property="og:site_name" content="潮鸣">
+<meta property="og:description" content="##实践内容寻找对通过OpenStack建立的虚拟机进行增量快照，并且使得这些快照可以备份在远程的方法。 ##技术方案通过研究了解到Nova自带的快照功能并不支持增量快照，每次快照会将修改的内容与基础镜像合并然后上传到存储后端，然后决定选择特定的hypervisor进行该功能的实现，本文选取qemu作为后端hypervisor。 通过研究发现Centos 7默认的qemu-kvm版本（1.5.3）">
+<meta property="og:locale" content="zh-CN">
+<meta property="og:updated_time" content="2019-03-26T02:44:08.820Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OpenStack虚拟机增量快照（基于qemu外置快照）">
+<meta name="twitter:description" content="##实践内容寻找对通过OpenStack建立的虚拟机进行增量快照，并且使得这些快照可以备份在远程的方法。 ##技术方案通过研究了解到Nova自带的快照功能并不支持增量快照，每次快照会将修改的内容与基础镜像合并然后上传到存储后端，然后决定选择特定的hypervisor进行该功能的实现，本文选取qemu作为后端hypervisor。 通过研究发现Centos 7默认的qemu-kvm版本（1.5.3）">
+  
+    <link rel="alternative" href="/atom.xml" title="潮鸣" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  <link rel="stylesheet" href="/css/style.css">
+  <!--[if lt IE 9]><script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7/html5shiv.min.js"></script><![endif]-->
+  
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "//hm.baidu.com/hm.js?aeb07ba20a02c2bef2a50f47b88b63b6";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+</head></html>
+<body>
+<div id="container">
+  <div id="wrap">
+    <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">潮鸣</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Why the worry, I&#39;d rather wonder.</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="http://www.baidu.com/baidu" method="get" accept-charset="utf-8" class="search-form">
+          <input type="search" name="word" maxlength="20" class="search-form-input" placeholder="Search">
+          <input type="submit" value class="search-form-submit">
+          <input name="tn" type="hidden" value="bds">
+          <input name="cl" type="hidden" value="3">
+          <input name="ct" type="hidden" value="2097152">
+          <input type="hidden" name="si" value="yoursite.com">
+        </form>
+      </div>
+    </div>
+  </div>
+</header>
+    <div class="outer">
+      <section id="main"><article id="post-OpenStack虚拟机增量快照（基于qemu外置快照）" class="article article-type-post" itemscope itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2015/11/25/OpenStack虚拟机增量快照（基于qemu外置快照）/" class="article-date">
+  <time datetime="2015-11-25T11:19:33.000Z" itemprop="datePublished">2015-11-25</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      OpenStack虚拟机增量快照（基于qemu外置快照）
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>##实践内容<br>寻找对通过OpenStack建立的虚拟机进行增量快照，并且使得这些快照可以备份在远程的方法。</p>
+<p>##技术方案<br>通过研究了解到Nova自带的快照功能并不支持增量快照，每次快照会将修改的内容与基础镜像合并然后上传到存储后端，然后决定选择特定的hypervisor进行该功能的实现，本文选取qemu作为后端hypervisor。</p>
+<p>通过研究发现Centos 7默认的qemu-kvm版本（1.5.3）不支持外部快照，而内部快照的增量对于备份快照并无价值。经过查阅资料决定通过编译源码的方式安装较新的qemu(2.4.1)来进行外部快照。通过外部快照对虚拟机进行快照并得到保存快照信息的镜像文件，最后通过快照合并功能得到需要包含还原信息的镜像从而达到备份的效果。<br><a id="more"></a></p>
+<p>##实践步骤</p>
+<p>###实验环境搭建<br>1.通过源码安装新版本的qemu及qemu-kvm<br>下载qemu源码，qemu-kvm源码并解压：</p>
+<pre><code>git clone git://git.kernel.org/pub/scm/virt/kvm/qemu-kvm.git
+</code></pre><p>qemu官网由于大家都懂的原因无法访问，故手动下载qemu-2.4.1.tar.bz2</p>
+<pre><code>tar jvxf qemu-2.4.1.tar.bz2
+</code></pre><p>2.安装qemu-kvm<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">yum install -y glib*</span><br><span class="line">./configure</span><br><span class="line">make -j 20</span><br><span class="line">make install</span><br></pre></td></tr></table></figure></p>
+<p>该步如果出现错误参考qemu安装包解决错误的方法(一般是因为缺少glib和zlib库)。</p>
+<p>3.安装qemu依赖包</p>
+<pre><code>yum install gcc libsdl1.2-dev zlib1g-dev libasound2-dev pkg-config libgnutls-dev            pciutils-dev
+</code></pre><p>4.解决编译前置配置的错误：</p>
+<p>安装zlib，glib以及libtool</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">yum install zlib*</span><br><span class="line">yum install -y glib*</span><br><span class="line">yum install libtool</span><br></pre></td></tr></table></figure>
+<p>卸载本机自带的qemu模块</p>
+<pre><code>yum remove qemu
+yum remove qemu-kvm
+</code></pre><p>修改Makefile文件使其在Centos下忽略警告，而不是默认的将警告视为错误</p>
+<pre><code>vi MakeFile
+QEMU_CFLAGS+=-w
+</code></pre><p>（注意添加在相关代码块附近，不可直接添加在开始）</p>
+<p>5.编译前的环境配置</p>
+<pre><code>./configure
+</code></pre><p>6.编译及安装：</p>
+<pre><code>make
+make install
+</code></pre><p>###快照实验<br>1.下载虚拟机镜像，并存在目录中，并做好创建虚拟机所需的准备。<br>下载Cirros的镜像作为测试用镜像</p>
+<pre><code>yum install libvirt
+yum install virt-manager virt-viewer
+yum install virt-install
+</code></pre><p>关闭selinux</p>
+<pre><code># vi /etc/sysconfig/selinux
+SELINUX=disabled
+reboot
+</code></pre><p>注意目录的权限，如/root下的目录会由于目录权限的问题导致虚拟机创建失败。</p>
+<pre><code>mkdir my-cluster
+cd my-cluster
+</code></pre><p>2.安装虚拟机:</p>
+<pre><code>virt-install --name=cirros --ram=128 --vcpus=1 --disk /home/images/cirros-0.3.0-x86_64-disk.img,format=qcow2 --import –nonetworks
+</code></pre><p>3.对虚拟机进行快照</p>
+<pre><code>virsh # snapshot-create-as cirros extsnap1 --disk-only --atomic
+</code></pre><p>4.操作虚拟机进行简单的修改，比如添加文件等</p>
+<p>5.创建第二个快照</p>
+<pre><code>virsh # snapshot-create-as cirros extsnap2 --disk-only –atomic
+</code></pre><p>6.测试将基础镜像内容合并到快照</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">virsh blockpull --domain cirros --path /home/images/cirros-0.3.0-x86_64-disk.extsnap2</span><br><span class="line">cp cirros-0.3.0-x86_64-disk.extsnap2 testpull.img</span><br><span class="line">virt-install --name=exts2img --ram=128 --vcpus=1 --disk /home/images/testpull.img,format=qcow2 --import –nonetworks</span><br></pre></td></tr></table></figure>
+<p>经过测试发现可以利用合并后的快照2的镜像生成新的虚拟机，并且虚拟机里保存有修改内容，说明将基础镜像里的内容成功的整合到了快照镜像中。</p>
+<p>7.测试将快照内容合并到快照</p>
+<pre><code>cp cirros-0.3.0-x86_64-disk.img cirros01-test.img
+virt-install --name=cosncirros0 --ram=128 --vcpus=1 --disk /home/images/cirros01-test.img,format=qcow2 --import --nonetworks
+</code></pre><p>可以发现利用基础镜像的副本创建的新虚拟机中包含有修改过后的内容，说明快照内容成功的整合到了虚拟机中。</p>
+<p>###验证顶层快照无法合并进基础快照</p>
+<p>1.选择一个新的镜像创建一个新的虚拟机<br>2.进行快照</p>
+<pre><code>snapshot-create-as exts2img exts2imgsnap0 --disk-only --atomic
+</code></pre><p>3.修改虚拟机的内容<br>4.合并快照到基础镜像</p>
+<pre><code>qemu-img commit -f qcow2 testpull.exts2imgsnap0
+</code></pre><p>5.利用基础镜像重新创建一个虚拟机</p>
+<pre><code>virt-install --name=commimg --ram=128 --vcpus=1 --disk /home/images/testcomm.img,format=qcow2 --import –nonetworks
+</code></pre><p>发现新建的虚拟机中没有修改过的内容，说明顶层快照无法合并到基础快照中。</p>
+<p>###验证结果</p>
+<ol>
+<li>Nova自带的快照功能无法实现增量快照的远程备份。</li>
+<li>默认的1.5.1版本的qemu无法进行外部快照。</li>
+<li>2.4.1版本的qemu支持外部快照。</li>
+<li>进行外部快照操作过后基础镜像会被锁定，不会再被修改，所有的修改将在外部快照的镜像上进行。</li>
+<li>可以将基础镜像的内容整合到外部快照中得到新的可以启动虚拟机的镜像。</li>
+<li>可以将非顶层快照的内容整合到基础镜像中，得到可以启动虚拟机的镜像。</li>
+<li>顶层快照修改的内容无法合并到基础镜像中。</li>
+</ol>
+
+      
+    </div>
+    <footer class="article-footer">
+      
+        <a data-url="http://yoursite.com/2015/11/25/OpenStack虚拟机增量快照（基于qemu外置快照）/" data-id="cjtpfct54000981jr7sro2b3j" class="article-share-link" data-share="baidu">分享到</a>
+      
+
+      
+        <a href="http://yoursite.com/2015/11/25/OpenStack虚拟机增量快照（基于qemu外置快照）/#ds-thread" class="article-comment-link">评论</a>
+      
+
+      
+  <ul class="article-tag-list"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Openstack/">Openstack</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/kvm/">kvm</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/qemu/">qemu</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/qemu-kvm/">qemu-kvm</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/灾备/">灾备</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2016/10/27/猴子都能懂的ISCSI参考手册(基于CentOS-7)/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">下一篇</strong>
+      <div class="article-nav-title">
+        
+          猴子都能懂的ISCSI参考手册（基于CentOS 7）
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2015/11/17/Ceph扩展性整理/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">上一篇</strong>
+      <div class="article-nav-title">Ceph可进行操作简介</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+  <section id="comments">
+    <div id="ds-thread" class="ds-thread" data-thread-key="2015/11/25/OpenStack虚拟机增量快照（基于qemu外置快照）/" data-title="OpenStack虚拟机增量快照（基于qemu外置快照）" data-url="http://yoursite.com/2015/11/25/OpenStack虚拟机增量快照（基于qemu外置快照）/"></div>
+  </section>
+</section>
+      
+      <aside id="sidebar">
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">标签</h3>
+    <div class="widget">
+      <ul class="tag-list"><li class="tag-list-item"><a class="tag-list-link" href="/tags/Ceph/">Ceph</a><span class="tag-list-count">6</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/GlusterFS/">GlusterFS</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Linux/">Linux</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Openstack/">Openstack</a><span class="tag-list-count">4</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/SDS/">SDS</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/cinder/">cinder</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/iscsi/">iscsi</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/kvm/">kvm</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/linux/">linux</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/neutron/">neutron</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/python/">python</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/qemu/">qemu</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/qemu-kvm/">qemu-kvm</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/分布式存储/">分布式存储</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/性能/">性能</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/灾备/">灾备</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/网络虚拟化/">网络虚拟化</a><span class="tag-list-count">1</span></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/运维/">运维</a><span class="tag-list-count">1</span></li></ul>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">标签云</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/Ceph/" style="font-size: 20px;">Ceph</a> <a href="/tags/GlusterFS/" style="font-size: 10px;">GlusterFS</a> <a href="/tags/Linux/" style="font-size: 10px;">Linux</a> <a href="/tags/Openstack/" style="font-size: 15px;">Openstack</a> <a href="/tags/SDS/" style="font-size: 10px;">SDS</a> <a href="/tags/cinder/" style="font-size: 10px;">cinder</a> <a href="/tags/iscsi/" style="font-size: 10px;">iscsi</a> <a href="/tags/kvm/" style="font-size: 10px;">kvm</a> <a href="/tags/linux/" style="font-size: 10px;">linux</a> <a href="/tags/neutron/" style="font-size: 10px;">neutron</a> <a href="/tags/python/" style="font-size: 10px;">python</a> <a href="/tags/qemu/" style="font-size: 10px;">qemu</a> <a href="/tags/qemu-kvm/" style="font-size: 10px;">qemu-kvm</a> <a href="/tags/分布式存储/" style="font-size: 10px;">分布式存储</a> <a href="/tags/性能/" style="font-size: 10px;">性能</a> <a href="/tags/灾备/" style="font-size: 10px;">灾备</a> <a href="/tags/网络虚拟化/" style="font-size: 10px;">网络虚拟化</a> <a href="/tags/运维/" style="font-size: 10px;">运维</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">归档</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/03/">三月 2019</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2017/05/">五月 2017</a><span class="archive-list-count">2</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2017/02/">二月 2017</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2016/12/">十二月 2016</a><span class="archive-list-count">2</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2016/11/">十一月 2016</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2016/10/">十月 2016</a><span class="archive-list-count">1</span></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2015/11/">十一月 2015</a><span class="archive-list-count">3</span></li></ul>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">近期文章</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/03/29/Linux系统调用查询与跟踪/">Linux系统调用查询与跟踪</a>
+          </li>
+        
+          <li>
+            <a href="/2017/05/09/Openstack Neutron概述/">Openstack Neutron概述</a>
+          </li>
+        
+          <li>
+            <a href="/2017/05/01/Ceph更换网络状况处理方法/">Ceph更换网络状况处理方法</a>
+          </li>
+        
+          <li>
+            <a href="/2017/02/21/使用Distutils（setup.py）打包Python项目为rpm包简介/">使用Distutils（setup.py）打包Python项目为rpm包简介</a>
+          </li>
+        
+          <li>
+            <a href="/2016/12/29/Ceph快照详解——使用，原理与实现/">Ceph快照详解——使用，原理与实现</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">友情链接</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="http://aidaiz.com/" target="_blank">Yunyao Zhang</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+      
+    </div>
+    <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 Yun<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+      .
+      Theme by <a href="https://github.com/xiangming/landscape-plus" target="_blank">Landscape-plus</a>
+    </div>
+  </div>
+</footer>
+  </div>
+  <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+  <!-- totop start -->
+<div id="totop">
+<a title="返回顶部"><img src="/img/scrollup.png"></a>
+</div>
+
+<!-- totop end -->
+
+<!-- 多说公共js代码 start -->
+<script type="text/javascript">
+var duoshuoQuery = {short_name:"yunhuanran"};
+  (function() {
+    var ds = document.createElement('script');
+    ds.type = 'text/javascript';ds.async = true;
+    ds.src = (document.location.protocol == 'https:' ? 'https:' : 'http:') + '//static.duoshuo.com/embed.js';
+    ds.charset = 'UTF-8';
+    (document.getElementsByTagName('head')[0]
+     || document.getElementsByTagName('body')[0]).appendChild(ds);
+  })();
+  </script>
+<!-- 多说公共js代码 end -->
+
+
+<!-- 百度分享 start -->
+
+<div id="article-share-box" class="article-share-box">
+  <div id="bdshare" class="bdsharebuttonbox article-share-links">
+    <a class="article-share-weibo" data-cmd="tsina" title="分享到新浪微博"></a>
+    <a class="article-share-weixin" data-cmd="weixin" title="分享到微信"></a>
+    <a class="article-share-qq" data-cmd="sqq" title="分享到QQ"></a>
+    <a class="article-share-renren" data-cmd="renren" title="分享到人人网"></a>
+    <a class="article-share-more" data-cmd="more" title="更多"></a>
+  </div>
+</div>
+<script>window._bd_share_config={"common":{},"share":{"bdCustomStyle":"/css/bdshare.css"}};with(document)0[(getElementsByTagName('head')[0]||body).appendChild(createElement('script')).src='http://bdimg.share.baidu.com/static/api/js/share.js?cdnversion='+~(-new Date()/36e5)];</script>
+
+<!-- 百度分享 end -->
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+
+
+
+
+<! -- mathjax config similar to math.stackexchange -->
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+                processEscapes: true
+                    
+}
+  
+        });
+</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+tex2jax: {
+            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+                  
+}
+    
+        });
+</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Queue(function() {
+            var all = MathJax.Hub.getAllJax(), i;
+            for(i=0; i < all.length; i += 1) {
+                            all[i].SourceElement().parentNode.className += ' has-jax';
+                                    
+            }
+                
+        });
+</script>
+
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+</script>
+
+
+<script src="/js/script.js"></script>
+
+</div>
+</body>
+</html>
